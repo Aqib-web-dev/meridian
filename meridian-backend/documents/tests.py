@@ -1,6 +1,9 @@
 import pytest
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APIClient
 
 from documents.models import Document, DocumentChunk
 from documents.serializers import DocumentSerializer, MAX_DOCUMENT_SIZE_BYTES
@@ -45,6 +48,16 @@ def document_payload(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def test_document_api_rejects_anonymous_users():
+    """Anonymous users should be rejected instead of reaching tenant filtering."""
+    client = APIClient()
+    client.raise_request_exception = False
+
+    response = client.get(reverse("document-list"))
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 def test_database_allows_company_wide_document_without_team():
