@@ -13,18 +13,12 @@ class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
 
     def get_queryset(self):
-        user = self.request.user
-
-        membership = Membership.objects.filter(user=user).select_related("tenant").first()
-        if membership is None:
-            return Document.objects.none()
-
         team_ids = TeamMembership.objects.filter(
-            membership=membership,
+            membership=self.request.membership,
         ).values_list("team_id", flat=True)
 
         return (
-            Document.objects.filter(tenant=membership.tenant)
+            Document.objects.filter(tenant=self.request.tenant)
             .filter(
                 Q(visibility=Document.Visibility.COMPANY)
                 | Q(visibility=Document.Visibility.TEAM, team_id__in=team_ids)
@@ -34,5 +28,4 @@ class DocumentViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        membership = Membership.objects.select_related("tenant").get(user=self.request.user)
-        serializer.save(tenant=membership.tenant)
+        serializer.save(tenant=self.request.tenant)
