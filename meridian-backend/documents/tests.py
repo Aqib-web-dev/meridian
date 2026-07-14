@@ -9,7 +9,7 @@ from accounts.serializers import MeridianTokenObtainPairSerializer
 from documents.models import Document, DocumentChunk
 from documents.serializers import DocumentSerializer, MAX_DOCUMENT_SIZE_BYTES
 from tenants.models import Membership, Team, TeamMembership, Tenant
-
+from unittest.mock import patch
 
 pytestmark = pytest.mark.django_db
 
@@ -308,3 +308,23 @@ def test_document_upload_rejects_member_uploading_company_document():
     )
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
+
+@patch("documents.views.generate_presigned_upload")
+def test_upload_url_returns_presigned_url_for_valid_request(mock_presign):
+    mock_presign.return_value = "https://fake-bucket.s3.amazonaws.com/fake-key?X-Amz-Signature=abc"
+    tenant = create_tenant()
+    user, _membership = create_membership(tenant, "owner", role=Membership.Role.OWNER)
+    client = authenticated_client(user)  # real JWT -> request.tenant/membership get set
+
+    response = client.post(
+        reverse("document-upload-url"),
+        {
+            "title": "Q3 Report", "original_filename": "q3.pdf",
+            "content_type": "application/pdf", "file_size": 500_000,
+            "visibility": "company", "team": "",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.data["upload_url"] == mock_presign.return_value
+    mock_presign.assert_called_once()

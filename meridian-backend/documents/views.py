@@ -1,5 +1,9 @@
 from django.db.models import Q
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+from documents.services import build_upload_key, generate_presigned_upload
 from .permissions import (
     CanAccessDocument,
     CanUploadCompanyDocument,
@@ -48,3 +52,21 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(tenant=self.request.tenant)
+        
+    @action(detail=False, methods=["post"], url_path="upload-url")
+    def upload_url(self, request):
+        # Same serializer, same validate() — size/type/visibility/role checks unchanged.
+        serializer = DocumentSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)   # 400 with field errors if anything fails
+
+        key = build_upload_key(request.tenant.id, serializer.validated_data["original_filename"])
+        document = serializer.save(tenant=request.tenant, file_key=key)   # row created up front
+
+        upload_url = generate_presigned_upload(
+            key=key,
+            content_type=serializer.validated_data["content_type"],
+        )
+        return Response(
+            {"upload_url": upload_url, "document": DocumentSerializer(document).data},
+            status=201,
+        )
