@@ -34,6 +34,9 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "accounts.authentication.MeridianJWTAuthentication",
     ],
+    "DEFAULT_PERMISSION_CLASSES": [              
+        "rest_framework.permissions.IsAuthenticated",
+    ],
 }
 
 SIMPLE_JWT = {

@@ -1,5 +1,11 @@
 from django.db.models import Q
 from rest_framework.permissions import IsAuthenticated
+from .permissions import (
+    CanAccessDocument,
+    CanUploadCompanyDocument,
+    CanUploadTeamDocument,
+    IsTenantMember,
+)
 from rest_framework import viewsets
 
 from tenants.models import Membership, TeamMembership
@@ -9,8 +15,21 @@ from .serializers import DocumentSerializer
 
 
 class DocumentViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenantMember]
     serializer_class = DocumentSerializer
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [
+                IsAuthenticated(),
+                IsTenantMember(),
+                CanUploadCompanyDocument(),
+                CanUploadTeamDocument(),
+            ]
+        if self.action in ("retrieve", "update", "partial_update", "destroy"):
+            return [IsAuthenticated(), IsTenantMember(), CanAccessDocument()]
+        return super().get_permissions()
+
 
     def get_queryset(self):
         team_ids = TeamMembership.objects.filter(

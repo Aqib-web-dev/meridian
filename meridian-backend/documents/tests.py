@@ -5,6 +5,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from accounts.serializers import MeridianTokenObtainPairSerializer
 from documents.models import Document, DocumentChunk
 from documents.serializers import DocumentSerializer, MAX_DOCUMENT_SIZE_BYTES
 from tenants.models import Membership, Team, TeamMembership, Tenant
@@ -35,6 +36,14 @@ def create_membership(tenant, username, role=Membership.Role.MEMBER):
     return user, membership
 
 
+def authenticated_client(user):
+    """Return an APIClient carrying a real JWT so MeridianJWTAuthentication runs and sets request.tenant/membership."""
+    token = MeridianTokenObtainPairSerializer.get_token(user)
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+    return client
+
+
 def document_payload(**overrides):
     """Return valid document input and allow tests to change one rule at a time."""
     payload = {
@@ -51,13 +60,13 @@ def document_payload(**overrides):
 
 
 def test_document_api_rejects_anonymous_users():
-    """Anonymous users should be rejected instead of reaching tenant filtering."""
+    """Anonymous users should get 401 (not authenticated) instead of reaching tenant filtering."""
     client = APIClient()
     client.raise_request_exception = False
 
     response = client.get(reverse("document-list"))
 
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 def test_database_allows_company_wide_document_without_team():
@@ -268,3 +277,34 @@ def test_document_serializer_allows_admin_to_upload_company_document():
     )
 
     assert serializer.is_valid(), serializer.errors
+
+def test_document_detail_rejects_cross_tenant_access():
+    """A member of another tenant must get 404, not 403, on a document they don't own."""
+    tenant = create_tenant("acme")
+    other_tenant = create_tenant("beta")
+    team = create_team(tenant)
+    document = Document.objects.create(
+        tenant=tenant, visibility=Document.Visibility.TEAM, team=team,
+        title="Legal Policy", original_filename="legal.pdf", file_key="uploads/legal.pdf",
+    )
+    user, _membership = create_membership(other_tenant, "outsider")
+    client = authenticated_client(user)
+
+    response = client.get(reverse("document-detail", args=[document.id]))
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_document_upload_rejects_member_uploading_company_document():
+    """A plain member (not owner/admin) must be denied a company-wide upload."""
+    tenant = create_tenant()
+    user, _membership = create_membership(tenant, "regular")  # default role: MEMBER
+
+    client = authenticated_client(user)
+
+    response = client.post(
+        reverse("document-list"),
+        document_payload(visibility=Document.Visibility.COMPANY, team=""),
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
