@@ -1,7 +1,16 @@
+import sys
+
 from .base import BASE_DIR, env
 from .base import *
 
 env.read_env(BASE_DIR / ".env")
+
+# Run Celery tasks inline ONLY while pytest is running — so tests need no
+# Redis/worker. `runserver` never imports pytest, so it keeps the real queue
+# (tasks go to Redis, the worker runs them) exactly as in production.
+if "pytest" in sys.modules:
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True  # let task exceptions surface as test failures
 
 SECRET_KEY = env("SECRET_KEY", default="dev-only-secret-key")
 

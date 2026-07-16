@@ -3,6 +3,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from .tasks import process_document_upload
+
 from documents.services import build_upload_key, generate_presigned_upload
 from .permissions import (
     CanAccessDocument,
@@ -70,3 +72,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
             {"upload_url": upload_url, "document": DocumentSerializer(document).data},
             status=201,
         )
+    @action(detail=True, methods=["post"], url_path="confirm-upload")
+    def confirm_upload(self, request, pk=None):
+        document = self.get_object()
+        process_document_upload.delay(document.id)
+        return Response({"status": document.status}, status=202)

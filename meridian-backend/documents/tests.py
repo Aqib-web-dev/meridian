@@ -328,3 +328,120 @@ def test_upload_url_returns_presigned_url_for_valid_request(mock_presign):
     assert response.status_code == 201
     assert response.data["upload_url"] == mock_presign.return_value
     mock_presign.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Day 9 — Celery background task: process_document_upload
+#
+# These run under pytest, where CELERY_TASK_ALWAYS_EAGER is True
+# (see meridian/settings/dev.py), so calling the task runs its body inline —
+# no Redis and no worker needed. We call the task function directly, which is
+# the cleanest way to assert on its logic.
+# ---------------------------------------------------------------------------
+
+from documents.tasks import process_document_upload  # noqa: E402
+
+
+def create_document(tenant, team, status=Document.Status.UPLOADED):
+    """Create one team document in a given status, for task tests."""
+    return Document.objects.create(
+        tenant=tenant,
+        visibility=Document.Visibility.TEAM,
+        team=team,
+        title="Legal Policy",
+        original_filename="legal-policy.pdf",
+        file_key="uploads/legal-policy.pdf",
+        status=status,
+    )
+
+
+def test_process_document_upload_moves_uploaded_document_to_ready():
+    """Happy path: an uploaded document is walked all the way to ready."""
+    tenant = create_tenant()
+    team = create_team(tenant)
+    document = create_document(tenant, team, status=Document.Status.UPLOADED)
+
+    process_document_upload(document.id)  # eager: runs the body inline, start to finish
+
+    document.refresh_from_db()
+    assert document.status == Document.Status.READY
+
+
+def test_process_document_upload_is_idempotent_on_already_processed_document():
+    """Idempotency guard: re-running on a ready document is a no-op, not a re-process."""
+    tenant = create_tenant()
+    team = create_team(tenant)
+    document = create_document(tenant, team, status=Document.Status.READY)
+
+    process_document_upload(document.id)  # should hit the guard and return immediately
+
+    document.refresh_from_db()
+    assert document.status == Document.Status.READY  # unchanged — no redo
+
+
+def test_process_document_upload_ignores_missing_document():
+    """A task for a row that no longer exists must return quietly, not raise."""
+    # Passing an id that doesn't exist — the task's except DoesNotExist branch
+    # should swallow it and return None, so nothing blows up.
+    result = process_document_upload(999_999)
+
+    assert result is None
+
+
+class _StopRetry(Exception):
+    """Sentinel so the test can let `self.retry(...)` fire without Celery re-running the task."""
+
+
+def test_process_document_upload_marks_failed_when_processing_raises():
+    """If the processing body raises, the document must land in FAILED before retrying.
+
+    We force the READY-setting save to blow up, and stub the task's own retry to
+    raise a sentinel we catch. What we assert on is the observable outcome: the
+    document is left in FAILED, and a retry was requested.
+    """
+    tenant = create_tenant()
+    team = create_team(tenant)
+    document = create_document(tenant, team, status=Document.Status.UPLOADED)
+
+    real_save = Document.save
+    call = {"n": 0}
+
+    def flaky_save(self, *args, **kwargs):
+        # 1st save = PROCESSING (ok), 2nd = READY (boom), 3rd = FAILED (ok)
+        call["n"] += 1
+        if call["n"] == 2:
+            raise RuntimeError("simulated processing failure")
+        return real_save(self, *args, **kwargs)
+
+    # `self.retry(...)` inside the task -> raise our sentinel instead of re-running.
+    retry_calls = []
+
+    def fake_retry(*args, **kwargs):
+        retry_calls.append(kwargs)
+        raise _StopRetry
+
+    with patch("documents.tasks.Document.save", flaky_save), \
+         patch("documents.tasks.process_document_upload.retry", side_effect=fake_retry):
+        with pytest.raises(_StopRetry):
+            process_document_upload(document.id)
+
+    document.refresh_from_db()
+    assert document.status == Document.Status.FAILED  # the observable outcome
+    assert len(retry_calls) == 1  # a retry was requested after the failure
+
+
+@patch("documents.views.process_document_upload.delay")
+def test_confirm_upload_queues_task_and_returns_202(mock_delay):
+    """The confirm-upload endpoint queues the task and returns 202 Accepted."""
+    tenant = create_tenant()
+    team = create_team(tenant)
+    user, membership = create_membership(tenant, "contributor")
+    TeamMembership.objects.create(membership=membership, team=team, role=TeamMembership.Role.CONTRIBUTOR)
+    document = create_document(tenant, team, status=Document.Status.UPLOADED)
+    client = authenticated_client(user)
+
+    response = client.post(reverse("document-confirm-upload", args=[document.id]))
+
+    assert response.status_code == 202
+    assert response.data["status"] == Document.Status.UPLOADED  # status at queue time
+    mock_delay.assert_called_once_with(document.id)  # task was handed off with the id
