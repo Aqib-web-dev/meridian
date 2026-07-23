@@ -4,7 +4,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from tenants.models import Membership
 
 
-class MeridianTokenObtainPairSerializer(TokenObtainPairSerializer):
+class ParselioTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)

@@ -1,10 +1,10 @@
-# Meridian Backend
+# Parselio Backend
 
-Django REST Framework API backend for Meridian, a multi-tenant document-intelligence SaaS.
+Django REST Framework API backend for Parselio, a multi-tenant document-intelligence SaaS.
 
 ## Multi-tenancy approach and why
 
-Meridian uses a **shared database, tenant-discriminator-column** approach:
+Parselio uses a **shared database, tenant-discriminator-column** approach:
 every tenant-owned table carries a `tenant` foreign key (via the abstract
 `TenantScopedModel` base), rather than giving each customer a separate
 schema or database.
@@ -18,7 +18,7 @@ filter by tenant, every write must force it, with no exceptions.
 
 **How isolation is actually enforced, end to end:**
 
-1. **Auth resolves tenant identity.** `MeridianJWTAuthentication` reads
+1. **Auth resolves tenant identity.** `ParselioJWTAuthentication` reads
    the JWT's `tenant_id` claim, re-verifies a live `Membership` still
    exists for that user+tenant, and attaches `request.tenant` /
    `request.membership` / `request.company_role` before any view code runs.
@@ -43,7 +43,7 @@ protect every call site, permanently.
 ## Running locally
 
 ```bash
-python manage.py runserver          # dev server (uses meridian.settings.dev)
+python manage.py runserver          # dev server (uses parselio.settings.dev)
 python manage.py makemigrations
 python manage.py migrate
 python manage.py createsuperuser

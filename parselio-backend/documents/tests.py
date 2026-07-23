@@ -5,7 +5,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from accounts.serializers import MeridianTokenObtainPairSerializer
+from accounts.serializers import ParselioTokenObtainPairSerializer
 from documents.models import Document, DocumentChunk
 from documents.serializers import DocumentSerializer, MAX_DOCUMENT_SIZE_BYTES
 from tenants.models import Membership, Team, TeamMembership, Tenant
@@ -37,8 +37,8 @@ def create_membership(tenant, username, role=Membership.Role.MEMBER):
 
 
 def authenticated_client(user):
-    """Return an APIClient carrying a real JWT so MeridianJWTAuthentication runs and sets request.tenant/membership."""
-    token = MeridianTokenObtainPairSerializer.get_token(user)
+    """Return an APIClient carrying a real JWT so ParselioJWTAuthentication runs and sets request.tenant/membership."""
+    token = ParselioTokenObtainPairSerializer.get_token(user)
     client = APIClient()
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
     return client
@@ -176,7 +176,7 @@ def test_document_serializer_rejects_file_larger_than_limit():
 
 
 def test_document_serializer_rejects_unsupported_content_type():
-    """Serializer validation should reject file types Meridian does not accept."""
+    """Serializer validation should reject file types Parselio does not accept."""
     tenant = create_tenant()
     team = create_team(tenant)
     user, _membership = create_membership(tenant, "owner", Membership.Role.OWNER)
@@ -334,7 +334,7 @@ def test_upload_url_returns_presigned_url_for_valid_request(mock_presign):
 # Day 9 — Celery background task: process_document_upload
 #
 # These run under pytest, where CELERY_TASK_ALWAYS_EAGER is True
-# (see meridian/settings/dev.py), so calling the task runs its body inline —
+# (see parselio/settings/dev.py), so calling the task runs its body inline —
 # no Redis and no worker needed. We call the task function directly, which is
 # the cleanest way to assert on its logic.
 # ---------------------------------------------------------------------------

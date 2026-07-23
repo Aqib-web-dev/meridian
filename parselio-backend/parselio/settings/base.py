@@ -33,7 +33,7 @@ INSTALLED_APPS = [
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "accounts.authentication.MeridianJWTAuthentication",
+        "accounts.authentication.ParselioJWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [              
         "rest_framework.permissions.IsAuthenticated",
@@ -71,7 +71,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-ROOT_URLCONF = "meridian.urls"
+ROOT_URLCONF = "parselio.urls"
 
 TEMPLATES = [
     {
@@ -89,7 +89,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "meridian.wsgi.application"
+WSGI_APPLICATION = "parselio.wsgi.application"
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -130,7 +130,7 @@ AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default=None)
 AWS_S3_SIGNATURE_VERSION = "s3v4"
 AWS_QUERYSTRING_EXPIRE = 300
 
-# DB 1 isolates Meridian's queue from other local projects sharing this Redis
+# DB 1 isolates Parselio's queue from other local projects sharing this Redis
 # (DB 0 is used by another project — a shared broker+DB makes workers pick up
 # each other's tasks, causing "Received unregistered task" errors).
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/1")

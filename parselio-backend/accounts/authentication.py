@@ -4,7 +4,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from tenants.models import Membership, TeamMembership
 
 
-class MeridianJWTAuthentication(JWTAuthentication):
+class ParselioJWTAuthentication(JWTAuthentication):
     def authenticate(self, request):
         result = super().authenticate(request)
         if result is None:
